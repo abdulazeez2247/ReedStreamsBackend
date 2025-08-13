@@ -192,62 +192,70 @@ const fetchLiveMatchDetails = async (matchId) => {
     return null;
   }
 };
-
 const getLiveStreams = async (req, res, next) => {
-  const requestedSportSlug = req.query.sport;
-
   try {
-    const response = await axios.get(`${API_BASE_URL}/v1/video/play/stream/list`, {
-      params: {
-        user: USER_KEY,
-        secret: SECRET_KEY,
-      },
-      timeout: 30000,
-    });
+    const { data: streamData } = await axios.get(
+      `${API_BASE_URL}/v1/video/play/stream/list`,
+      {
+        params: { user: USER_KEY, secret: SECRET_KEY },
+        timeout: 30000,
+      }
+    );
 
-    const streams = response.data?.results || [];
+    if (!streamData?.results?.length) {
+      return next(new AppError("No live streams found from API.", 404));
+    }
 
-    const mapped = streams
+    const simpleStreams = streamData.results
+      .filter((stream) => stream.sport_id === 1 || stream.sport_id === 2)
+      .filter((stream) => stream.playurl1 || stream.playurl2)
       .map((stream) => {
-        const sport = Object.values(SPORTS_MAPPING).find(s => s.id === stream.sport_id);
-
-        if (!sport) {
-          console.warn(` Unknown sport_id: ${stream.sport_id} for match_id: ${stream.match_id}`);
-          return null;
-        }
+        const date = new Date(stream.match_time * 1000);
+        const formattedTime = date.toLocaleString(undefined, {
+          year: "numeric",
+          month: "numeric",
+          day: "numeric",
+          hour: "numeric",
+          minute: "numeric",
+          second: "numeric",
+        });
 
         return {
-          match_id: stream.match_id,
           sport_id: stream.sport_id,
-          sport_name: sport.name,
-          sport_slug: sport.slug,
-          start_time: convertTimestampToDateTime(stream.match_time),
-          stream_url: stream.playurl2 || stream.playurl1 || null,
-          home_team_name: stream.home_name || 'Home',
-          away_team_name: stream.away_name || 'Away',
-          competition_name: stream.competition_name || '',
-          status: stream.status || { description: 'Live' },
-          home_score_current: stream.home_score || 0,
-          away_score_current: stream.away_score || 0,
-          goal_scorers: stream.goal_scorers || [],
+          match_id: stream.match_id,
+          match_time: formattedTime,
+          playurl1: stream.playurl1,
+          playurl2: stream.playurl2,
         };
-      })
-      .filter(stream => stream && stream.stream_url);
+      });
 
-    const filtered = requestedSportSlug
-      ? mapped.filter(s => s.sport_slug === requestedSportSlug)
-      : mapped;
+    if (!simpleStreams.length) {
+      return next(new AppError("No live football or baseball streams found with active URLs.", 404));
+    }
 
-    return res.status(200).json({
+    res.status(200).json({
       status: "success",
-      results: filtered.length,
-      data: { streams: filtered },
+      results: simpleStreams.length,
+      data: { streams: simpleStreams },
     });
   } catch (error) {
     console.error("Live stream fetch failed:", error.message);
-    return next(new AppError("Failed to fetch live streams", 500));
+    return next(
+      new AppError("Failed to fetch live matches", 500, error.message)
+    );
   }
 };
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -353,28 +361,46 @@ const getMatchList = async (req, res, next) => {
         params: {
           user: USER_KEY,
           secret: SECRET_KEY,
+          date: new Date().toISOString().slice(0, 10).replace(/-/g, ""), // yyyymmdd
         },
       }
     );
 
     const rawMatches = response.data?.results || [];
+    const extra = response.data?.results_extra || {};
 
-    const mappedMatches = rawMatches.map((match) => ({
-      id: match.id,
-      season_id: match.season_id,
-      competition_id: match.competition_id,
-      competition_name: match.league_name || "Unknown League",
-      home_team_id: match.home_team_id,
-      away_team_id: match.away_team_id,
-      home_team_name: match.home_name,
-      away_team_name: match.away_name,
-      status_id: match.status_id,
-      match_time: convertTimestampToDateTime(match.match_time),
-      home_scores: match.home_scores,
-      away_scores: match.away_scores,
-      home_score_current: match.home_score_current ?? match.home_score ?? null,
-      away_score_current: match.away_score_current ?? match.away_score ?? null,
-    }));
+    // Convert extra arrays into quick lookup maps
+    const competitionMap = {};
+    extra.competition?.forEach(c => competitionMap[c.id] = c);
+    
+    const teamMap = {};
+    extra.team?.forEach(t => teamMap[t.id] = t);
+
+    const mappedMatches = rawMatches.map((match) => {
+      const competition = competitionMap[match.competition_id] || {};
+      const homeTeam = teamMap[match.home_team_id] || {};
+      const awayTeam = teamMap[match.away_team_id] || {};
+
+      return {
+        id: match.id,
+        season_id: match.season_id,
+        competition_id: match.competition_id,
+        competition_name: competition.name || "Unknown League",
+        competition_logo: competition.logo || null,
+        home_team_id: match.home_team_id,
+        away_team_id: match.away_team_id,
+        home_team_name: homeTeam.name || "Home",
+        home_team_logo: homeTeam.logo || null,
+        away_team_name: awayTeam.name || "Away",
+        away_team_logo: awayTeam.logo || null,
+        status_id: match.status_id,
+        match_time: convertTimestampToDateTime(match.match_time),
+        home_scores: match.home_scores,
+        away_scores: match.away_scores,
+        home_score_current: match.home_scores?.[0] ?? null,
+        away_score_current: match.away_scores?.[0] ?? null,
+      };
+    });
 
     res.status(200).json({
       status: "success",
@@ -392,7 +418,9 @@ const getMatchList = async (req, res, next) => {
   }
 };
 
+
 module.exports = {
+  fetchLiveMatchDetails,
   getLiveStreams,
   getMatchDiary,
   getAllSports,

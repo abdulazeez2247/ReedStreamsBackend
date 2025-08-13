@@ -8,10 +8,7 @@ const SECRET_KEY = process.env.THE_SPORTS_API_SECRET;
 
 const SPORTS_MAPPING = {
   football: { id: 1, name: "Football", slug: "football" },
-  basketball: { id: 2, name: "Basketball", slug: "basketball" },
-  tabletennis: { id: null, name: "Table Tennis", slug: "tabletennis" },
-  baseball: { id: null, name: "Baseball", slug: "baseball" },
-  volleyball: { id: null, name: "Volleyball", slug: "volleyball" },
+  baseball: { id: 2, name: "Baseball", slug: "baseball" },
 };
 
 const getproxyStream = async (req, res, next) => {
@@ -292,11 +289,11 @@ const getMatchDiary = async (req, res, next) => {
       return next(new AppError(`No match diary found for match ID: ${matchId}`, 404));
     }
 
-    // ✅ Extract real team names
+    
     const realHomeTeam = rawMatchDetails.home_team?.name || "Home";
     const realAwayTeam = rawMatchDetails.away_team?.name || "Away";
 
-    // ✅ Extract goal scorers
+    
     const goalScorers =
       rawMatchDetails.incidents
         ?.filter((i) => i.type === "goal" && i.player_name)
@@ -306,7 +303,7 @@ const getMatchDiary = async (req, res, next) => {
           score_after: `${i.home_score}-${i.away_score}`,
         })) || [];
 
-    // ✅ Construct mappedDetails to override placeholder fields
+    
     const mappedDetails = {
       match_id: matchId,
       sport_id: sportInfo.id,

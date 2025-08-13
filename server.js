@@ -65,7 +65,7 @@ app.get("/api/matches/proxy-stream", async (req, res) => {
 
     let origin;
     try {
-        const parsed = new URL(finalDecodedUrl); // TYPO CORRECTED HERE
+        const parsed = new URL(finalDecodedUrl); 
         origin = parsed.origin;
     } catch (err) {
         console.error("Backend Log: Invalid URL format after decoding:", err.message);

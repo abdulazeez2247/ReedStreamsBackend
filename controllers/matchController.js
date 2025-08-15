@@ -192,116 +192,157 @@ const fetchLiveMatchDetails = async (matchId) => {
     return null;
   }
 };
-const getLiveStreams = async (req, res, next) => {
-  try {
-    const { data: streamData } = await axios.get(
-      `${API_BASE_URL}/v1/video/play/stream/list`,
-      {
-        params: { user: USER_KEY, secret: SECRET_KEY },
-        timeout: 30000,
-      }
-    );
 
-    if (!streamData?.results?.length) {
-      return next(new AppError("No live streams found from API.", 404));
+const getLiveStreams = async (req, res, next) => {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const threeHoursInSeconds = 3 * 60 * 60; // 3 hours
+  const tenMinutesInSeconds = 10 * 60; // 10 minutes
+  let cachedStreams = null;
+  let lastFetchTime = 0;
+
+  const getMatchStatus = (sportId, matchTime) => {
+    const currentTime = Math.floor(Date.now() / 1000);
+
+    if (sportId === 1) {
+      // FOOTBALL rules
+      if (matchTime > currentTime && matchTime <= currentTime + tenMinutesInSeconds) {
+        return "UPCOMING";
+      }
+      if (matchTime <= currentTime && currentTime - matchTime <= threeHoursInSeconds) {
+        return "LIVE";
+      }
+      return "FINISHED";
     }
 
-    const simpleStreams = streamData.results
-      .filter((stream) => stream.sport_id === 1 || stream.sport_id === 2)
-      .filter((stream) => stream.playurl1 || stream.playurl2)
-      .map((stream) => {
-        const date = new Date(stream.match_time * 1000);
-        const formattedTime = date.toLocaleString(undefined, {
-          year: "numeric",
-          month: "numeric",
-          day: "numeric",
-          hour: "numeric",
-          minute: "numeric",
-          second: "numeric",
+    if (sportId === 6) {
+      // BASEBALL rules
+      if (matchTime > currentTime && matchTime <= currentTime + tenMinutesInSeconds) {
+        return "UPCOMING";
+      }
+      // FIX: Only consider it LIVE if it started within the last 3 hours
+      if (matchTime <= currentTime && currentTime - matchTime <= threeHoursInSeconds) {
+        return "LIVE";
+      }
+      return "FINISHED";
+    }
+
+    return "FINISHED";
+  };
+
+  try {
+    const now = Date.now();
+
+    if (!cachedStreams || (now - lastFetchTime) > 60000) {
+      console.log("⏳ Fetching fresh live streams from API...");
+      const { data: streamData } = await axios.get(
+        `${API_BASE_URL}/v1/video/play/stream/list`, {
+          params: {
+            user: USER_KEY,
+            secret: SECRET_KEY
+          },
+          timeout: 30000,
+        }
+      );
+
+      if (!streamData?.results?.length) {
+        return next(new AppError("No live streams found from API.", 404));
+      }
+
+      cachedStreams = streamData.results
+        .filter((stream) => stream.sport_id === 1 || stream.sport_id === 6)
+        .map((stream) => {
+          const sport_name = stream.sport_id === 1 ? "football" : "baseball";
+          const match_status = getMatchStatus(stream.sport_id, stream.match_time);
+          return {
+            sport_id: stream.sport_id,
+            sport_name: sport_name,
+            match_id: stream.match_id,
+            competition_name: stream.comp,
+            home_team: stream.home,
+            away_team: stream.away,
+            match_time: stream.match_time,
+            match_status: match_status,
+            playurl1: stream.playurl1 || null,
+            playurl2: stream.playurl2 || null
+          };
         });
 
-        return {
-          sport_id: stream.sport_id,
-          match_id: stream.match_id,
-          match_time: formattedTime,
-          playurl1: stream.playurl1,
-          playurl2: stream.playurl2,
-        };
-      });
+      lastFetchTime = now;
+    } else {
+      console.log("✅ Using cached live streams");
+    }
 
-    if (!simpleStreams.length) {
-      return next(new AppError("No live football or baseball streams found with active URLs.", 404));
+    const filteredStreams = cachedStreams.filter(
+      (stream) => stream.match_status !== "FINISHED"
+    );
+
+    if (!filteredStreams.length) {
+      return next(
+        new AppError(
+          "No live or upcoming football or baseball matches found.",
+          404
+        )
+      );
     }
 
     res.status(200).json({
       status: "success",
-      results: simpleStreams.length,
-      data: { streams: simpleStreams },
+      results: filteredStreams.length,
+      data: {
+        streams: filteredStreams
+      },
     });
   } catch (error) {
-    console.error("Live stream fetch failed:", error.message);
-    return next(
-      new AppError("Failed to fetch live matches", 500, error.message)
-    );
+    return next(new AppError("Failed to fetch live matches", 500, error.message));
   }
 };
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-const getMatchDiary = async (req, res, next) => {
+const getSingleMatchDiary = async (req, res, next) => {
   const { sportName, matchId } = req.params;
-  const sportInfo = SPORTS_MAPPING[sportName];
-  if (!sportInfo || sportInfo.id === null) {
+
+  const allowedSports = ["football", "baseball"];
+  if (!allowedSports.includes(sportName)) {
     return next(
-      new AppError("Invalid or unmapped sport specified for match diary.", 400)
+      new AppError(
+        `This endpoint is only for ${allowedSports.join(" or ")}.`,
+        400
+      )
     );
   }
 
   try {
-    console.log(`Backend Log: Fetching details for matchId: ${matchId}, sport: ${sportName}`);
-
-    const detailLiveUrl = `${API_BASE_URL}/v1/${sportName}/match/detail_live`;
-    const response = await axios.get(detailLiveUrl, {
+    const currentTimestamp = Math.floor(Date.now() / 1000);
+    const diaryUrl = `${API_BASE_URL}/v1/${sportName}/match/diary`;
+    const diaryResponse = await axios.get(diaryUrl, {
       params: {
         user: USER_KEY,
         secret: SECRET_KEY,
-        match_id: matchId,
+        tsp: currentTimestamp,
       },
+      timeout: 5000,
     });
 
     let rawMatchDetails = null;
-    if (response.data?.results?.length) {
-      rawMatchDetails = response.data.results.find(
-        (match) => String(match.id) === String(matchId)
+
+    if (diaryResponse.data?.results) {
+      rawMatchDetails = diaryResponse.data.results.find(
+        (match) => match.match_id === matchId
       );
-    } else if (response.data?.id === matchId) {
-      rawMatchDetails = response.data;
-    } else if (response.data?.data?.id === matchId) {
-      rawMatchDetails = response.data.data;
     }
 
     if (!rawMatchDetails) {
-      return next(new AppError(`No match diary found for match ID: ${matchId}`, 404));
+      return next(
+        new AppError(`Match details are not available for this stream.`, 404)
+      );
     }
 
-    
-    const realHomeTeam = rawMatchDetails.home_team?.name || "Home";
-    const realAwayTeam = rawMatchDetails.away_team?.name || "Away";
+    // Use real keys from API (home, away, comp)
+    const realHomeTeam = rawMatchDetails.home || "Home";
+    const realAwayTeam = rawMatchDetails.away || "Away";
+    const competitionName = rawMatchDetails.comp || "Unknown Competition";
 
-    
     const goalScorers =
       rawMatchDetails.incidents
         ?.filter((i) => i.type === "goal" && i.player_name)
@@ -311,19 +352,16 @@ const getMatchDiary = async (req, res, next) => {
           score_after: `${i.home_score}-${i.away_score}`,
         })) || [];
 
-    
     const mappedDetails = {
-      match_id: matchId,
-      sport_id: sportInfo.id,
-      sport_name: capitalizeFirst(sportName),
-      sport_slug: sportName,
-      start_time: rawMatchDetails.start_time,
-      stream_url: rawMatchDetails.stream_url,
+      match_id: rawMatchDetails.match_id,
+      sport_name: sportName,
       home_team_name: realHomeTeam,
       away_team_name: realAwayTeam,
-      competition_name: rawMatchDetails.competition_name || "",
+      competition_name: competitionName,
       status: {
-        description: rawMatchDetails.status?.description || "Live",
+        description:
+          rawMatchDetails.status?.description ||
+          (rawMatchDetails.match_status === 100 ? "Live" : "Upcoming"),
       },
       home_score_current: rawMatchDetails.home_score ?? 0,
       away_score_current: rawMatchDetails.away_score ?? 0,
@@ -335,15 +373,23 @@ const getMatchDiary = async (req, res, next) => {
       data: { match: mappedDetails },
     });
   } catch (error) {
-    console.error("getMatchDiary Error:", error.response?.data || error.message);
-    return next(new AppError(`Failed to fetch match diary: ${error.message}`, 500));
+    console.error(
+      `Failed to fetch match details for ${matchId}: ${error.message}`
+    );
+    return next(
+      new AppError(
+        `Failed to fetch match details. The API might be down or data is unavailable.`,
+        500
+      )
+    );
   }
 };
+
+
 
 function capitalizeFirst(str) {
   return str.charAt(0).toUpperCase() + str.slice(1);
 }
-
 
 const getMatchList = async (req, res, next) => {
   const { sportName } = req.params;
@@ -369,12 +415,11 @@ const getMatchList = async (req, res, next) => {
     const rawMatches = response.data?.results || [];
     const extra = response.data?.results_extra || {};
 
-    // Convert extra arrays into quick lookup maps
     const competitionMap = {};
-    extra.competition?.forEach(c => competitionMap[c.id] = c);
-    
+    extra.competition?.forEach((c) => (competitionMap[c.id] = c));
+
     const teamMap = {};
-    extra.team?.forEach(t => teamMap[t.id] = t);
+    extra.team?.forEach((t) => (teamMap[t.id] = t));
 
     const mappedMatches = rawMatches.map((match) => {
       const competition = competitionMap[match.competition_id] || {};
@@ -418,11 +463,10 @@ const getMatchList = async (req, res, next) => {
   }
 };
 
-
 module.exports = {
   fetchLiveMatchDetails,
   getLiveStreams,
-  getMatchDiary,
+  getSingleMatchDiary,
   getAllSports,
   getMatchList,
   getproxyStream,

@@ -1,69 +1,59 @@
-const dotenv = require("dotenv").config();
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
-const axios = require("axios");
-const connectDB = require("./config/db");
-const matchRoutes = require("./routes/matchRoutes");
-const adminRoutes = require("./routes/adminRoutes");
-const dashboardRoutes = require("./routes/dashboardRoutes");
-const appError = require("./utils/appError");
-const URL = require('url');
+require('dotenv').config();
+const express = require('express');
+const mongoose = require('mongoose');
+const cors = require('cors');
+const connectDB = require('./config/db');
+const matchRoutes = require('./routes/matchRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const dashboardRoutes = require('./routes/dashboardRoutes');
+const AppError = require('./utils/appError');
 
 const app = express();
 const port = process.env.PORT || 7000;
 
+// DB connection
 connectDB();
 
-app.use(express.json());
+// Middleware
+app.use(express.json({ limit: '10kb' }));
 
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin || origin === "null") {
-        callback(null, true);
-      } else {
-        callback(null, true);
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
-    optionsSuccessStatus: 200,
-  })
-);
+app.use(cors({
+  origin: true,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
 
-app.use("/api/dashboard", dashboardRoutes);
-app.use("/api/admin", adminRoutes);
+// Routes
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/matches', matchRoutes); 
 
-app.use("/api/matches", matchRoutes);
+
+app.get('/', (req, res) => {
+  res.send(' Live Sports Stream Backend is running');
+});
+
 
 app.use((err, req, res, next) => {
   err.statusCode = err.statusCode || 500;
-  err.status = err.status || "error";
+  err.status = err.status || 'error';
 
   if (err.isOperational) {
     return res.status(err.statusCode).json({
       status: err.status,
-      message: err.message,
+      message: err.message
     });
   }
 
-  console.error("ERROR", err);
-
+  console.error('ERROR ', err);
   return res.status(500).json({
-    status: "error",
-    message: "Something went very wrong!",
+    status: 'error',
+    message: 'Something went very wrong!'
   });
 });
 
-app.get("/", (req, res) => {
-  res.send("Live Sports Stream Backend is running");
-});
 
-app.get('/test', (req, res) => {
-    res.status(200).send('Test route is working!');
-});
-
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
+const server = app.listen(port, () => {
+  console.log(` Server running on port ${port}`);
 });

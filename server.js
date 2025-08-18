@@ -18,11 +18,12 @@ connectDB();
 app.use(express.json({ limit: '10kb' }));
 
 app.use(cors({
-  origin: true,
+  origin: ["https://reed-streams-live-sports.vercel.app/"], // whitelist your frontend
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
+
 
 // Routes
 app.use('/api/dashboard', dashboardRoutes);

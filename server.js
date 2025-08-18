@@ -18,7 +18,7 @@ connectDB();
 app.use(express.json({ limit: '10kb' }));
 
 app.use(cors({
-  origin: ["https://reed-streams-live-sports.vercel.app/"], // whitelist your frontend
+  origin: ["https://reed-streams-live-sports.vercel.app"], 
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]

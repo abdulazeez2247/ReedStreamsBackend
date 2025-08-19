@@ -70,7 +70,7 @@ const getproxyStream = async (req, res, next) => {
             const absoluteCDNUrl = new URL(line, originalCDNBasePath).href;
 
             const yourProxyBase =
-              "http://localhost:7000/api/matches/proxy-stream?url=";
+              "https://reedstreamsbackend1.onrender.com/api/matches/proxy-stream?url=";
             return `${yourProxyBase}${encodeURIComponent(absoluteCDNUrl)}`;
           }
           return line;

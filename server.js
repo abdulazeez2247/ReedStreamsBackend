@@ -18,7 +18,7 @@ connectDB();
 app.use(express.json({ limit: '10kb' }));
 
 app.use(cors({
-  origin: ["https://reed-streams-live-sports.vercel.app", "https://admin-pi-ruby.vercel.app"], 
+  origin: ["https://reed-streams-live-sports.vercel.app", "https://admin-pi-ruby.vercel.app", "http://127.0.0.1:5502"], 
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"]
